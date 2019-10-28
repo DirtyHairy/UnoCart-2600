@@ -1259,7 +1259,6 @@ void emulate_DPC_cartridge()
 	SysTick_Config(SystemCoreClock / 21000);	// 21KHz
 	__disable_irq();	// Disable interrupts
 
-	unsigned char prevRom = 0, prevRom2 = 0;
 	int soundAmplitudeIndex = 0;
 	unsigned char soundAmplitudes[8] = {0x00, 0x04, 0x05, 0x09, 0x06, 0x0a, 0x0b, 0x0f};
 
@@ -1282,7 +1281,7 @@ void emulate_DPC_cartridge()
 
 
 	uint32_t lastSysTick = SysTick->VAL;
-	uint32_t DpcClocks = 0;
+	uint32_t DpcClocks1 = 0, DpcClocks2 = 0, DpcClocks3 = 0;
 
 	while (1)
 	{
@@ -1295,14 +1294,8 @@ void emulate_DPC_cartridge()
 
 			if (addr < 0x1040)
 			{	// DPC read
-				int index = addr & 0x07;
-				int function = (addr >> 3) & 0x07;
-
-				// Update flag register for selected data fetcher
-				if((DpcCounters[index] & 0x00ff) == DpcTops[index])
-					DpcFlags[index] = 0xff;
-				else if((DpcCounters[index] & 0x00ff) == DpcBottoms[index])
-					DpcFlags[index] = 0x00;
+				unsigned char index = addr & 0x07;
+				unsigned char function = (addr >> 3) & 0x07;
 
 				unsigned char result = 0;
 				switch (function)
@@ -1347,17 +1340,58 @@ void emulate_DPC_cartridge()
 				DATA_OUT = ((uint16_t)result)<<8;
 				SET_DATA_MODE_OUT
 				// wait for address bus to change
-				while (ADDR_IN == addr) ;
-				SET_DATA_MODE_IN
 
 				// Clock the selected data fetcher's counter if needed
-				if ((index < 5) || ((index >= 5) && (!DpcMusicModes[index - 5])))
+				if ((index < 5) || ((index >= 5) && (!DpcMusicModes[index - 5]))) {
 					DpcCounters[index] = (DpcCounters[index] - 1) & 0x07ff;
+
+					// Update flag register for selected data fetcher
+					if((DpcCounters[index] & 0x00ff) == DpcTops[index])
+						DpcFlags[index] = 0xff;
+					else if((DpcCounters[index] & 0x00ff) == DpcBottoms[index])
+						DpcFlags[index] = 0x00;
+				}
+
+				uint32_t sysTick = SysTick->VAL;
+				if (sysTick > lastSysTick)
+				{	// the 21KHz clock has wrapped, so we increase the DPC clock
+
+					if (++DpcClocks1 > DpcTops[5]) DpcClocks1 = 0;
+					if (++DpcClocks2 > DpcTops[6]) DpcClocks2 = 0;
+					if (++DpcClocks3 > DpcTops[7]) DpcClocks3 = 0;
+
+					// update the music flags here, since there isn't enough time when the music register
+					// is being read.
+					DpcMusicFlags[0] = DpcClocks1 > DpcBottoms[5] ? 1 : 0;
+					DpcMusicFlags[1] = DpcClocks2 > DpcBottoms[6] ? 2 : 0;
+					DpcMusicFlags[2] = DpcClocks3 > DpcBottoms[7] ? 4 : 0;
+				}
+				lastSysTick = sysTick;
+
+				while (ADDR_IN == addr) ;
+				SET_DATA_MODE_IN
 			}
 			else if (addr < 0x1080)
 			{	// DPC write
-				int index = addr & 0x07;
-				int function = (addr >> 3) & 0x07;
+				unsigned char index = addr & 0x07;
+				unsigned char function = (addr >> 3) & 0x07;
+				unsigned char ctr = DpcCounters[index] & 0xff;
+
+				uint32_t sysTick = SysTick->VAL;
+				if (sysTick > lastSysTick)
+				{	// the 21KHz clock has wrapped, so we increase the DPC clock
+
+					if (++DpcClocks1 > DpcTops[5]) DpcClocks1 = 0;
+					if (++DpcClocks2 > DpcTops[6]) DpcClocks2 = 0;
+					if (++DpcClocks3 > DpcTops[7]) DpcClocks3 = 0;
+
+					// update the music flags here, since there isn't enough time when the music register
+					// is being read.
+					DpcMusicFlags[0] = DpcClocks1 > DpcBottoms[5] ? 1 : 0;
+					DpcMusicFlags[1] = DpcClocks2 > DpcBottoms[6] ? 2 : 0;
+					DpcMusicFlags[2] = DpcClocks3 > DpcBottoms[7] ? 4 : 0;
+				}
+				lastSysTick = sysTick;
 
 				while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
 				unsigned char value = data_prev>>8;
@@ -1367,26 +1401,41 @@ void emulate_DPC_cartridge()
 					{	// DFx top count
 						DpcTops[index] = value;
 						DpcFlags[index] = 0x00;
+
+						if(ctr == value)
+							DpcFlags[index] = 0xff;
+
 						break;
 					}
 
 					case 0x01:
 					{	// DFx bottom count
 						DpcBottoms[index] = value;
+
+						if(ctr == value)
+							DpcFlags[index] = 0x00;
+
 						break;
 					}
 
 					case 0x02:
 					{	// DFx counter low
 						DpcCounters[index] = (DpcCounters[index] & 0x0700) | value;
+
+						if (value == DpcTops[index])
+							DpcFlags[index] = 0xff;
+						else if(value == DpcBottoms[index])
+							DpcFlags[index] = 0x00;
+
 						break;
 					}
 
 					case 0x03:
 					{	// DFx counter high
-						DpcCounters[index] = (((uint16_t)(value & 0x07)) << 8) | (DpcCounters[index] & 0xff);
+						DpcCounters[index] = (((uint16_t)(value & 0x07)) << 8) | ctr;
 						if(index >= 5)
 							DpcMusicModes[index - 5] = (value & 0x10) ? 0x7 : 0;
+
 						break;
 					}
 
@@ -1407,31 +1456,25 @@ void emulate_DPC_cartridge()
 				// normal rom access
 				DATA_OUT = ((uint16_t)bankPtr[addr&0xFFF])<<8;
 				SET_DATA_MODE_OUT
-				prevRom2 = prevRom;
-				prevRom = bankPtr[addr&0xFFF];
-				// wait for address bus to change
-				while (ADDR_IN == addr) ;
-				SET_DATA_MODE_IN
-			}
-		}
-		else if((prevRom2 & 0xec) == 0x84) // Only do this when ZP write since there will be a full cycle available there
-		{	// non cartridge access - e.g. sta wsync
-			while (ADDR_IN == addr) {
-				// should the DPC clock be incremented?
+
 				uint32_t sysTick = SysTick->VAL;
 				if (sysTick > lastSysTick)
 				{	// the 21KHz clock has wrapped, so we increase the DPC clock
-					DpcClocks++;
+
+					if (++DpcClocks1 > DpcTops[5]) DpcClocks1 = 0;
+					if (++DpcClocks2 > DpcTops[6]) DpcClocks2 = 0;
+					if (++DpcClocks3 > DpcTops[7]) DpcClocks3 = 0;
+
 					// update the music flags here, since there isn't enough time when the music register
 					// is being read.
-					DpcMusicFlags[0] = (DpcClocks % (DpcTops[5] + 1))
-							> DpcBottoms[5] ? 1 : 0;
-					DpcMusicFlags[1] = (DpcClocks % (DpcTops[6] + 1))
-							> DpcBottoms[6] ? 2 : 0;
-					DpcMusicFlags[2] = (DpcClocks % (DpcTops[7] + 1))
-							> DpcBottoms[7] ? 4 : 0;
+					DpcMusicFlags[0] = DpcClocks1 > DpcBottoms[5] ? 1 : 0;
+					DpcMusicFlags[1] = DpcClocks2 > DpcBottoms[6] ? 2 : 0;
+					DpcMusicFlags[2] = DpcClocks3 > DpcBottoms[7] ? 4 : 0;
 				}
 				lastSysTick = sysTick;
+
+				while (ADDR_IN == addr) ;
+				SET_DATA_MODE_IN
 			}
 		}
 	}
@@ -1559,7 +1602,7 @@ int main(void)
 	set_tv_mode(tv_mode);
 
 	// set up status area
-	set_menu_status_msg("R.EDWARDS 11");
+	set_menu_status_msg("R.EDWARDS P0");
 	set_menu_status_byte(0);
 
 	while (1) {
