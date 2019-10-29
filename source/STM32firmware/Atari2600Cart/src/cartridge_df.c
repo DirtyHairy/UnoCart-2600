@@ -135,6 +135,5 @@ void emulate_df_cartridge(const char* filename, uint32_t image_size, uint8_t* bu
         // wait for address bus to change
         while (ADDR_IN == addr) ;
         SET_DATA_MODE_IN
-
     }
 }

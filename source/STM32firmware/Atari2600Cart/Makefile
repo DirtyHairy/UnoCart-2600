@@ -39,6 +39,7 @@ SOURCES = \
 	src/cartridge_ace.c \
 	src/cartridge_pp.c \
 	src/cartridge_df.c \
+	src/cartridge_dpc.c \
 	src/flash.c \
 	src/main.c
 
@@ -67,7 +68,7 @@ CFLAGS = \
 	-MT $@ -MMD -MP -MF $(DEPDIR)/$*.d \
 	-O2 -Wall -g \
 	-mcpu=cortex-m4 -mthumb \
-	-mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
+	-mfpu=fpv4-sp-d16 -mhard-float \
 	-DSTM32F4XX \
 	-DSTM32F40XX \
 	-DUSE_STM32F4_DISCOVERY \
@@ -81,6 +82,7 @@ LDSCRIPT = stm32f4_flash.ld
 LDFLAGS += \
 	-T$(LDSCRIPT) \
 	-mthumb -mcpu=cortex-m4 \
+	-mhard-float \
 	--specs=nosys.specs \
 	-Wl,--gc-sections \
 	-Wl,-Map=$(MAP)
