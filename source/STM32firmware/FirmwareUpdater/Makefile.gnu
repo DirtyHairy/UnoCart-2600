@@ -42,7 +42,7 @@ CFLAGS = \
 	-MT $@ -MMD -MP -MF $(DEPDIR)/$*.d \
 	-O2 -Wall -g \
 	-mcpu=cortex-m4 -mthumb \
-	-mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
+	-mfpu=fpv4-sp-d16 -mhard-float \
 	-DSTM32F4XX \
 	-DSTM32F40XX \
 	-DUSE_STM32F4_DISCOVERY \
@@ -58,6 +58,7 @@ CFLAGS = \
 LDSCRIPT = stm32f4_flash.ld
 LDFLAGS += \
 	-T$(LDSCRIPT) \
+	-mhard-float \
 	-mthumb -mcpu=cortex-m4 \
 	--specs=nosys.specs \
 	-Wl,--gc-sections \
