@@ -4,18 +4,13 @@
 #include "cartridge_firmware.h"
 
 #define UPDATE_MUSIC_FETCHERS { \
-    uint32_t sysTick = SysTick->VAL; \
-    if (sysTick > lastSysTick) \
-    { \
-        if (++DpcClocks1 > DpcTops[5]) DpcClocks1 = 0; \
-        if (++DpcClocks2 > DpcTops[6]) DpcClocks2 = 0; \
-        if (++DpcClocks3 > DpcTops[7]) DpcClocks3 = 0; \
-    } else {\
-        DpcMusicFlags[0] = DpcClocks1 > DpcBottoms[5] ? 1 : 0; \
-        DpcMusicFlags[1] = DpcClocks2 > DpcBottoms[6] ? 2 : 0; \
-        DpcMusicFlags[2] = DpcClocks3 > DpcBottoms[7] ? 4 : 0; \
-    } \
-    lastSysTick = sysTick; \
+    uint32_t systick = SysTick->VAL; \
+	if (systick > systick_lastval) music_counter++; \
+	systick_lastval = systick; \
+	music_flags = \
+		((music_counter % (dpctop_music & 0xff)) > (dpcbottom_music & 0xff) ? 1 : 0) | \
+		((music_counter % ((dpctop_music >> 8) & 0xff)) > ((dpcbottom_music >> 8) & 0xff) ? 2 : 0) | \
+		((music_counter % ((dpctop_music >> 16) & 0xff)) > ((dpcbottom_music >> 16) & 0xff) ? 4 : 0); \
 }
 
 #define CCM_RAM ((uint8_t*)0x10000000)
@@ -23,10 +18,10 @@
 bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 {
 	SysTick_Config(SystemCoreClock / 21000);	// 21KHz
+	uint32_t systick_lastval = 0;
+	uint32_t music_counter = 0;
 
     uint8_t* ccm = CCM_RAM;
-
-	int soundAmplitudeIndex = 0;
 
     uint8_t* soundAmplitudes = ccm;
     soundAmplitudes[0] = 0x00;
@@ -51,12 +46,6 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
     uint16_t* DpcCounters = (void*)ccm;
     ccm += 16;
 
-    int* DpcMusicModes = (void*)ccm;
-    ccm += 12;
-
-    int* DpcMusicFlags = (void*)ccm;
-    ccm += 12;
-
     memcpy(ccm, buffer, image_size);
     buffer = ccm;
     ccm += image_size;
@@ -64,19 +53,15 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
 	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
 
+	uint32_t dpctop_music = 0, dpcbottom_music = 0;
+	uint8_t music_modes = 0, music_flags = 0;
+
 	// Initialise the DPC's random number generator register (must be non-zero)
 	int DpcRandom = 1;
 
 	// Initialise the DPC registers
 	for(int i = 0; i < 8; ++i)
 		DpcTops[i] = DpcBottoms[i] = DpcCounters[i] = DpcFlags[i] = 0;
-
-	DpcMusicModes[0] = DpcMusicModes[1] = DpcMusicModes[2] = 0;
-	DpcMusicFlags[0] = DpcMusicFlags[1] = DpcMusicFlags[2] = 0;
-
-
-	uint32_t lastSysTick = SysTick->VAL;
-	uint32_t DpcClocks1 = 0, DpcClocks2 = 0, DpcClocks3 = 0;
 
     if (!reboot_into_cartridge()) {
         return false;
@@ -111,10 +96,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 						}
 						else
 						{	// sound
-							soundAmplitudeIndex = (DpcMusicModes[0] & DpcMusicFlags[0]);
-							soundAmplitudeIndex |=  (DpcMusicModes[1] & DpcMusicFlags[1]);
-							soundAmplitudeIndex |=  (DpcMusicModes[2] & DpcMusicFlags[2]);
-							result = soundAmplitudes[soundAmplitudeIndex];;
+							result = soundAmplitudes[music_modes & music_flags];
 						}
 						break;
 					}
@@ -143,7 +125,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				// wait for address bus to change
 
 				// Clock the selected data fetcher's counter if needed
-				if ((index < 5) || ((index >= 5) && (!DpcMusicModes[index - 5]))) {
+				if ((index < 5) || ((index >= 5) && (!(music_modes & (1 << (index - 5)))))) {
 					DpcCounters[index] = (DpcCounters[index] - 1) & 0x07ff;
 
 					// Update flag register for selected data fetcher
@@ -178,6 +160,9 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 						if(ctr == value)
 							DpcFlags[index] = 0xff;
 
+						if (index >= 0x05)
+							dpctop_music = (dpctop_music & ~(0x000000ff << (8*(index - 0x05)))) | ((uint32_t)value << (8*(index - 0x05)));
+
 						break;
 					}
 
@@ -187,6 +172,9 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 						if(ctr == value)
 							DpcFlags[index] = 0x00;
+
+						if (index >= 0x05)
+							dpcbottom_music = (dpcbottom_music & ~(0x000000ff << (8*(index - 0x05)))) | ((uint32_t)value << (8*(index - 0x05)));
 
 						break;
 					}
@@ -206,8 +194,8 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 					case 0x03:
 					{	// DFx counter high
 						DpcCounters[index] = (((uint16_t)(value & 0x07)) << 8) | ctr;
-						if(index >= 5)
-							DpcMusicModes[index - 5] = (value & 0x10) ? 0x7 : 0;
+
+						if (index >= 0x05) music_modes = (music_modes & ~(0x01 << (index - 0x05))) | ((value & 0x10) >> (0x09 - index));
 
 						break;
 					}

@@ -66,7 +66,7 @@ MAP = $(BUILDDIR)/firmware.map
 
 CFLAGS = \
 	-MT $@ -MMD -MP -MF $(DEPDIR)/$*.d \
-	-O2 -Wall -g \
+	-Os -fno-tree-vrp -g \
 	-mcpu=cortex-m4 -mthumb \
 	-mfpu=fpv4-sp-d16 -mhard-float \
 	-DSTM32F4XX \
