@@ -3,14 +3,10 @@
 #include "cartridge_dpc.h"
 #include "cartridge_firmware.h"
 
-#define UPDATE_MUSIC_FETCHERS { \
+#define UPDATE_MUSIC_COUNTER { \
     uint32_t systick = SysTick->VAL; \
 	if (systick > systick_lastval) music_counter++; \
 	systick_lastval = systick; \
-	music_flags = \
-		((music_counter % (dpctop_music & 0xff)) > (dpcbottom_music & 0xff) ? 1 : 0) | \
-		((music_counter % ((dpctop_music >> 8) & 0xff)) > ((dpcbottom_music >> 8) & 0xff) ? 2 : 0) | \
-		((music_counter % ((dpctop_music >> 16) & 0xff)) > ((dpcbottom_music >> 16) & 0xff) ? 4 : 0); \
 }
 
 #define CCM_RAM ((uint8_t*)0x10000000)
@@ -18,8 +14,23 @@
 bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 {
 	SysTick_Config(SystemCoreClock / 21000);	// 21KHz
+
 	uint32_t systick_lastval = 0;
 	uint32_t music_counter = 0;
+
+	uint32_t dpctop_music = 0;
+	uint32_t dpcbottom_music  = 0;
+
+	uint8_t music_flags = 0;
+	uint8_t music_modes = 0;
+
+	uint8_t prev_rom = 0, prev_rom2 = 0;
+
+	uint16_t addr, addr_prev = 0, addr_prev2 = 0, data = 0, data_prev = 0;
+	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
+
+	// Initialise the DPC's random number generator register (must be non-zero)
+	uint32_t DpcRandom = 1;
 
     uint8_t* ccm = CCM_RAM;
 
@@ -50,15 +61,6 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
     buffer = ccm;
     ccm += image_size;
 
-	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
-	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
-
-	uint32_t dpctop_music = 0, dpcbottom_music = 0;
-	uint8_t music_modes = 0, music_flags = 0;
-
-	// Initialise the DPC's random number generator register (must be non-zero)
-	int DpcRandom = 1;
-
 	// Initialise the DPC registers
 	for(int i = 0; i < 8; ++i)
 		DpcTops[i] = DpcBottoms[i] = DpcCounters[i] = DpcFlags[i] = 0;
@@ -71,8 +73,11 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	while (1)
 	{
-		while ((addr = ADDR_IN) != addr_prev)
+		while (((addr = ADDR_IN) != addr_prev) || (addr != addr_prev2))
+		{
+			addr_prev2 = addr_prev;
 			addr_prev = addr;
+		}
 
 		// got a stable address
 		if (addr & 0x1000)
@@ -135,7 +140,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 						DpcFlags[index] = 0x00;
 				}
 
-                UPDATE_MUSIC_FETCHERS;
+                UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) ;
 				SET_DATA_MODE_IN
@@ -146,7 +151,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				unsigned char function = (addr >> 3) & 0x07;
 				unsigned char ctr = DpcCounters[index] & 0xff;
 
-                UPDATE_MUSIC_FETCHERS;
+                UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
 				unsigned char value = data_prev>>8;
@@ -218,11 +223,23 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				DATA_OUT = ((uint16_t)bankPtr[addr&0xFFF])<<8;
 				SET_DATA_MODE_OUT
 
-				UPDATE_MUSIC_FETCHERS;
+				prev_rom2 = prev_rom;
+				prev_rom = bankPtr[addr&0xFFF];
+
+				UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) ;
 				SET_DATA_MODE_IN
 			}
+		} else if ((prev_rom2 & 0xec) == 0x84) {
+			music_flags = \
+				((music_counter % (dpctop_music & 0xff)) > (dpcbottom_music & 0xff) ? 1 : 0) |
+				((music_counter % ((dpctop_music >> 8) & 0xff)) > ((dpcbottom_music >> 8) & 0xff) ? 2 : 0) |
+				((music_counter % ((dpctop_music >> 16) & 0xff)) > ((dpcbottom_music >> 16) & 0xff) ? 4 : 0);
+
+				UPDATE_MUSIC_COUNTER;
+
+			while (ADDR_IN == addr);
 		}
 	}
 
