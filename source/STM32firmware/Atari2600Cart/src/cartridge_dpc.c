@@ -26,7 +26,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	uint8_t prev_rom = 0, prev_rom2 = 0;
 
-	uint16_t addr, addr_prev = 0, addr_prev2 = 0, data = 0, data_prev = 0;
+	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
 	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
 
 	// Initialise the DPC's random number generator register (must be non-zero)
@@ -73,9 +73,8 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	while (1)
 	{
-		while (((addr = ADDR_IN) != addr_prev) || (addr != addr_prev2))
+		while ((addr = ADDR_IN) != addr_prev)
 		{
-			addr_prev2 = addr_prev;
 			addr_prev = addr;
 		}
 
