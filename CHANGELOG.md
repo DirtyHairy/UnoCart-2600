@@ -1,5 +1,10 @@
 # Changelog
 
+## v12
+
+ * Fix DPC regressions on some machines
+ * Improve DPC audio quality
+
 ## v11
 
  * Increase optimization level to O2 -> supercharger games work again.
