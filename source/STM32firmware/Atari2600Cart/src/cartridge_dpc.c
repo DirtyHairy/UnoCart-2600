@@ -23,10 +23,11 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	uint8_t music_flags = 0;
 	uint8_t music_modes = 0;
+	uint8_t music_index = 0;
 
 	uint8_t prev_rom = 0, prev_rom2 = 0;
 
-	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
+	uint16_t addr, addr_prev = 0, addr_prev2 = 0, data = 0, data_prev = 0;
 	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
 
 	// Initialise the DPC's random number generator register (must be non-zero)
@@ -73,8 +74,9 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	while (1)
 	{
-		while ((addr = ADDR_IN) != addr_prev)
+		while (((addr = ADDR_IN) != addr_prev) || (addr != addr_prev2))
 		{
+			addr_prev2 = addr_prev;
 			addr_prev = addr;
 		}
 
@@ -231,12 +233,11 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				SET_DATA_MODE_IN
 			}
 		} else if ((prev_rom2 & 0xec) == 0x84) {
-			music_flags = \
-				((music_counter % (dpctop_music & 0xff)) > (dpcbottom_music & 0xff) ? 1 : 0) |
-				((music_counter % ((dpctop_music >> 8) & 0xff)) > ((dpcbottom_music >> 8) & 0xff) ? 2 : 0) |
-				((music_counter % ((dpctop_music >> 16) & 0xff)) > ((dpcbottom_music >> 16) & 0xff) ? 4 : 0);
+			music_index = music_index == 2 ? 0 : (music_index + 1);
 
-				UPDATE_MUSIC_COUNTER;
+			music_flags =
+				music_counter % ((dpctop_music >> (8*music_index)) & 0xff) > ((dpcbottom_music >> (8*music_index)) & 0xff)
+					? (music_flags | (1 << music_index)) : (music_flags & ~(1 << music_index));
 
 			while (ADDR_IN == addr);
 		}
