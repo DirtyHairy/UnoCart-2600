@@ -1374,7 +1374,7 @@ int main(void)
 	set_tv_mode(tv_mode);
 
 	// set up status area
-	set_menu_status_msg("R.EDWARDS P5");
+	set_menu_status_msg("R.EDWARDS P6");
 	set_menu_status_byte(0);
 
 	while (1) {

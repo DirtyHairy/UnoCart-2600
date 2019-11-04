@@ -11,6 +11,8 @@
 
 #define CCM_RAM ((uint8_t*)0x10000000)
 
+#define RESET_ADDR addr = addr_prev = addr_prev2 = 0xffff;
+
 bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 {
 	SysTick_Config(SystemCoreClock / 21000);	// 21KHz
@@ -27,8 +29,9 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 	uint8_t prev_rom = 0, prev_rom2 = 0;
 
-	uint16_t addr, addr_prev = 0, addr_prev2 = 0, data = 0, data_prev = 0;
+	uint16_t addr, addr_prev, addr_prev2, data = 0, data_prev = 0;
 	unsigned char *bankPtr = buffer, *DpcDisplayPtr = buffer + 8*1024;
+	RESET_ADDR;
 
 	// Initialise the DPC's random number generator register (must be non-zero)
 	uint32_t DpcRandom = 1;
@@ -144,7 +147,8 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
                 UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) ;
-				SET_DATA_MODE_IN
+				SET_DATA_MODE_IN;
+				RESET_ADDR;
 			}
 			else if (addr < 0x1080)
 			{	// DPC write
@@ -155,6 +159,8 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
                 UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
+				RESET_ADDR;
+
 				unsigned char value = data_prev>>8;
 				switch (function)
 				{
@@ -222,7 +228,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 
 				// normal rom access
 				DATA_OUT = ((uint16_t)bankPtr[addr&0xFFF])<<8;
-				SET_DATA_MODE_OUT
+				SET_DATA_MODE_OUT;
 
 				prev_rom2 = prev_rom;
 				prev_rom = bankPtr[addr&0xFFF];
@@ -230,9 +236,10 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				UPDATE_MUSIC_COUNTER;
 
 				while (ADDR_IN == addr) ;
-				SET_DATA_MODE_IN
+				RESET_ADDR;
+				SET_DATA_MODE_IN;
 			}
-		} else if ((prev_rom2 & 0xec) == 0x84) {
+		} else {
 			music_index = music_index == 2 ? 0 : (music_index + 1);
 
 			music_flags =
@@ -240,6 +247,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 					? (music_flags | (1 << music_index)) : (music_flags & ~(1 << music_index));
 
 			while (ADDR_IN == addr);
+			RESET_ADDR;
 		}
 	}
 
