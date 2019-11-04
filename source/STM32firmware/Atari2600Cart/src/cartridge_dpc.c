@@ -239,13 +239,7 @@ bool emulate_dpc_cartridge(uint8_t* buffer, uint32_t image_size)
 				RESET_ADDR;
 				SET_DATA_MODE_IN;
 			}
-		} else {
-			music_index = music_index == 2 ? 0 : (music_index + 1);
-
-			music_flags =
-				music_counter % ((dpctop_music >> (8*music_index)) & 0xff) > ((dpcbottom_music >> (8*music_index)) & 0xff)
-					? (music_flags | (1 << music_index)) : (music_flags & ~(1 << music_index));
-
+		} else if (((prev_rom2 & 0b11111100) == 0b10000100) && prev_rom == addr) {
 			music_index = music_index == 2 ? 0 : (music_index + 1);
 
 			music_flags =
