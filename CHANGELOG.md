@@ -1,5 +1,9 @@
 # Changelog
 
+## v13
+
+ * Improve DPC compatibility.
+
 ## v12
 
  * Fix DPC regressions on some machines
