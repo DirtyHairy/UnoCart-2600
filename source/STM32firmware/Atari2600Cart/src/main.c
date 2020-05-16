@@ -1391,7 +1391,7 @@ int main(void)
 	set_tv_mode(tv_mode);
 
 	// set up status area
-	set_menu_status_msg("R.EDWARDS 13");
+	set_menu_status_msg("R.EDWARDS 14");
 	set_menu_status_byte(0);
 
 	while (1) {

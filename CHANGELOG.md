@@ -1,5 +1,9 @@
 # Changelog
 
+## v14
+
+ * Support for 3E+
+
 ## v13
 
  * Improve DPC compatibility.
