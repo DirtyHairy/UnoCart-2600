@@ -1,3 +1,4 @@
+#include <stdbool.h>
 
 #include "cartridge_3ep.h"
 #include "cartridge_firmware.h"
