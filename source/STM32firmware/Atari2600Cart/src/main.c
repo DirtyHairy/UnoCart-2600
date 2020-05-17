@@ -39,6 +39,7 @@
 #include "cartridge_dpc.h"
 #include "cartridge_3f.h"
 #include "cartridge_3e.h"
+#include "cartridge_3ep.h"
 #include "cartridge_bf.h"
 #include "cartridge_df.h"
 #include "cartridge_ace.h"
@@ -86,6 +87,7 @@ int tv_mode;
 #define CART_TYPE_PP    26  // Pink Panther Prototype
 #define CART_TYPE_DF    27  // DF
 #define CART_TYPE_DFSC  28  // DFSC
+#define CART_TYPE_3EP	29	// 3E+ 1-64K + 32K ram
 
 typedef struct {
 	const char *ext;
@@ -108,6 +110,7 @@ EXT_TO_CART_TYPE_MAP ext_to_cart_type_map[] = {
 	{"3F", CART_TYPE_3F},
 	{"3E", CART_TYPE_3E},
 	{"3EX", CART_TYPE_3E},
+	{"3EP", CART_TYPE_3EP},
 	{"E0", CART_TYPE_E0},
 	{"084", CART_TYPE_0840},
 	{"CV", CART_TYPE_CV},
@@ -201,6 +204,12 @@ int isProbably3E(int size, unsigned char *bytes)
 	// in address 3E using 'STA $3E', commonly followed by an
 	// immediate mode LDA
 	unsigned char  signature[] = { 0x85, 0x3E, 0xA9, 0x00 };  // STA $3E; LDA #$00
+	return searchForBytes(bytes, size, signature, 4, 1);
+}
+
+int isProbably3EPlus(int size, unsigned char *bytes)
+{	// 3E+ cart is identified by key 'TJ3E' in the ROM
+	unsigned char  signature[] = { 'T', 'J', '3', 'E' };
 	return searchForBytes(bytes, size, signature, 4, 1);
 }
 
@@ -471,6 +480,10 @@ int identify_cartridge(char *filename)
 	if (is_ace_cartridge(bytes_read, buffer))
 	{
 		cart_type = CART_TYPE_ACE;
+	}
+	else if (image_size <= 64 * 1024 && (image_size % 1024) == 0 && isProbably3EPlus(image_size, buffer))
+	{
+		cart_type = CART_TYPE_3EP;
 	}
 	else if (image_size == 2*1024)
 	{
@@ -1323,6 +1336,10 @@ void emulate_cartridge(int cart_type)
 	else if (cart_type == CART_TYPE_DFSC) {
 		emulate_dfsc_cartridge(cartridge_image_path, cart_size_bytes, buffer);
 	}
+	else if (cart_type == CART_TYPE_3EP){
+		emulate_3EPlus_cartridge(buffer, cart_size_bytes);
+    }
+
 }
 
 void convertFilenameForCart(unsigned char *dst, char *src)
@@ -1374,7 +1391,7 @@ int main(void)
 	set_tv_mode(tv_mode);
 
 	// set up status area
-	set_menu_status_msg("R.EDWARDS 13");
+	set_menu_status_msg("R.EDWARDS 14");
 	set_menu_status_byte(0);
 
 	while (1) {
