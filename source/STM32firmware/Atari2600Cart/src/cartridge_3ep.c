@@ -1,9 +1,7 @@
+#include <stdbool.h>
 
 #include "cartridge_3ep.h"
 #include "cartridge_firmware.h"
-
-#define TRUE 1
-#define FALSE 0
 
 /* 3E+ Bankswitching
  * ------------------------------
@@ -25,8 +23,8 @@ void emulate_3EPlus_cartridge(uint8_t* buffer, uint32_t image_size)
 	uint16_t act_bank = 0;
 	uint8_t* cart_rom = buffer;
 	uint8_t* cart_ram = buffer + image_size + (((~image_size & 0x03) + 1) & 0x03);
-	_Bool bankIsRAM[4] = { FALSE, FALSE, FALSE, FALSE };
-	unsigned char *bankPtr[4] = { &cart_rom[0], &cart_rom[0], &cart_rom[0], &cart_rom[0] };
+	bool bankIsRAM[4] = { false, false, false, false };
+	uint8_t *bankPtr[4] = { &cart_rom[0], &cart_rom[0], &cart_rom[0], &cart_rom[0] };
 
 	if (!reboot_into_cartridge()) return;
 
@@ -50,9 +48,9 @@ void emulate_3EPlus_cartridge(uint8_t* buffer, uint32_t image_size)
 			else
 			{	// reads to either RAM or ROM
 				if (bankIsRAM[act_bank]){
-					DATA_OUT = (bankPtr[act_bank][addr & 0x1FF])<<8;	// RAM read
+					DATA_OUT = ((uint16_t)(bankPtr[act_bank][addr & 0x1FF]))<<8;	// RAM read
 				}else{
-					DATA_OUT = (bankPtr[act_bank][addr & 0x3FF])<<8;	// ROM read
+					DATA_OUT = ((uint16_t)(bankPtr[act_bank][addr & 0x3FF]))<<8;	// ROM read
 				}
 
 				SET_DATA_MODE_OUT
@@ -60,16 +58,19 @@ void emulate_3EPlus_cartridge(uint8_t* buffer, uint32_t image_size)
 				while (ADDR_IN == addr) ;
 				SET_DATA_MODE_IN
 			}
-		}else{
+		} else {
 			while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
+
+			data_prev >>= 8;
+
 			if (addr == 0x3e) {
-				act_bank = (data_prev & 0x0C0) >> 8 >> 6; // bit 6 and 7 define the bank
-				bankIsRAM[act_bank] = TRUE; //TRUE;
+				act_bank = (data_prev & 0x0C0) >> 6; // bit 6 and 7 define the bank
+				bankIsRAM[act_bank] = true;
 				bankPtr[act_bank] =  cart_ram + ( ((data_prev & 0x03F) % cartRAMPages) << 9 );	// * 512 switch in a RAM bank
 			}
 			else if ( addr == 0x3f ){
-				act_bank = (data_prev & 0x0C0) >> 8 >> 6; // bit 6 and 7 define the bank
-				bankIsRAM[act_bank] = FALSE;
+				act_bank = (data_prev & 0x0C0) >> 6; // bit 6 and 7 define the bank
+				bankIsRAM[act_bank] = false;
 				bankPtr[act_bank] = cart_rom + ( ((data_prev & 0x03F) % cartROMPages) << 10);	// * 1024 switch in a ROM bank
 			}
 
