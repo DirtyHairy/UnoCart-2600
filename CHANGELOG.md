@@ -2,7 +2,7 @@
 
 ## v14
 
- * Support for 3E+
+ * Support for 3E+ (thanks to Wolfgang Stubig / AlNafuur on AAge)
 
 ## v13
 
