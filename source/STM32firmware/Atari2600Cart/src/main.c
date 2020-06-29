@@ -88,6 +88,7 @@ int tv_mode;
 #define CART_TYPE_DF    27  // DF
 #define CART_TYPE_DFSC  28  // DFSC
 #define CART_TYPE_3EP	29	// 3E+ 1-64K + 32K ram
+#define CART_TYPE_4KSC  30  // 4k+SC
 
 typedef struct {
 	const char *ext;
@@ -127,6 +128,7 @@ EXT_TO_CART_TYPE_MAP ext_to_cart_type_map[] = {
 	{"WD", CART_TYPE_PP},
 	{"DF", CART_TYPE_DF},
 	{"DFS", CART_TYPE_DFSC},
+	{"4KSC", CART_TYPE_4KSC},
 	{0,0}
 };
 
@@ -322,6 +324,13 @@ int isProbablyDFSC(unsigned char *tail)
 	return !memcmp(tail + 8, "DFSC", 4);
 }
 
+int isProbably4KSC(unsigned char *bytes) {
+	for (int i = 0; i < 256; i++)
+		if (bytes[i] != bytes[0]) return 0;
+
+	return bytes[0x0ffa] == 'S' && bytes[0x0ffb] == 'C';
+}
+
 /*************************************************************************
  * File/Directory Handling
  *************************************************************************/
@@ -399,7 +408,7 @@ int read_directory(char *path) {
 					continue;
 				dst->isDir = fno.fattrib & AM_DIR ? 1 : 0;
 				if (!dst->isDir)
-					if (!is_valid_file(fno.fname)) continue;
+					if (!is_valid_file(fno.lfname[0] ? fno.lfname : fno.fname)) continue;
 				// copy file record
 				strcpy(dst->filename, fno.fname);
 				if (fno.lfname[0]) {
@@ -419,7 +428,7 @@ int read_directory(char *path) {
 	return ret;
 }
 
-int identify_cartridge(char *filename)
+int identify_cartridge(char *filename, char* long_filename)
 {
 	TM_DELAY_Init();
 	FATFS FatFs;
@@ -431,7 +440,7 @@ int identify_cartridge(char *filename)
 	if (f_open(&fil, filename, FA_READ) != FR_OK) goto unmount;
 
 	// select type by file extension?
-	char *ext = get_filename_ext(filename);
+	char *ext = get_filename_ext(long_filename);
 	EXT_TO_CART_TYPE_MAP *p = ext_to_cart_type_map;
 	while (p->ext) {
 		if (strcasecmp(ext, p->ext) == 0) {
@@ -494,7 +503,7 @@ int identify_cartridge(char *filename)
 	}
 	else if (image_size == 4*1024)
 	{
-		cart_type = CART_TYPE_4K;
+		cart_type = isProbably4KSC(buffer) ? CART_TYPE_4KSC : CART_TYPE_4K;
 	}
 	else if (image_size == 8*1024)
 	{
@@ -705,6 +714,41 @@ void emulate_4k_cartridge() {
 			SET_DATA_MODE_IN
 		}
 	}
+	__enable_irq();
+}
+
+void emulate_4ksc_cartridge() {
+	setup_cartridge_image_with_ram();
+
+	__disable_irq();	// Disable interrupts
+
+	uint16_t addr = 0, addr_prev = 0, data = 0, data_prev = 0;
+
+	while (1)
+	{
+		while ((addr = ADDR_IN) != addr_prev)
+			addr_prev = addr;
+		// got a stable address
+		if (addr & 0x1000)
+		{ // A12 high
+			if (addr & 0x0f00) {
+				DATA_OUT = ((uint16_t)cart_rom[addr & 0x0fff]) << 8;
+				SET_DATA_MODE_OUT
+				// wait for address bus to change
+				while (ADDR_IN == addr) ;
+				SET_DATA_MODE_IN
+			} else if (addr & 0x0080) {
+				DATA_OUT = ((uint16_t)cart_ram[addr & 0x007f]) << 8;
+				SET_DATA_MODE_OUT;
+				while (ADDR_IN == addr);
+				SET_DATA_MODE_IN;
+			} else {
+				while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
+				cart_ram[addr & 0x007f] =  data_prev >> 8;
+			}
+		}
+	}
+
 	__enable_irq();
 }
 
@@ -1276,6 +1320,8 @@ void emulate_cartridge(int cart_type)
 		emulate_2k_cartridge();
 	else if (cart_type == CART_TYPE_4K)
 		emulate_4k_cartridge();
+	else if (cart_type == CART_TYPE_4KSC)
+		emulate_4ksc_cartridge();
 	else if (cart_type == CART_TYPE_F8)
 		emulate_FxSC_cartridge(0x1FF8, 0x1FF9, 0);
 	else if (cart_type == CART_TYPE_F6)
@@ -1431,7 +1477,7 @@ int main(void)
 				strcpy(cartridge_image_path, curPath);
 				strcat(cartridge_image_path, "/");
 				strcat(cartridge_image_path, d->filename);
-				cart_type = identify_cartridge(cartridge_image_path);
+				cart_type = identify_cartridge(cartridge_image_path, d->long_filename);
 				Delayms(200);
 				if (cart_type != CART_TYPE_NONE)
 					emulate_cartridge(cart_type);
