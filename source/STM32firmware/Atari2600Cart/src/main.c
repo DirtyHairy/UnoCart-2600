@@ -45,6 +45,8 @@
 #include "cartridge_ace.h"
 #include "cartridge_pp.h"
 
+#define VERSION "R.EDWARDS 16"
+
 /*************************************************************************
  * Cartridge Definitions
  *************************************************************************/
@@ -1437,7 +1439,7 @@ int main(void)
 	set_tv_mode(tv_mode);
 
 	// set up status area
-	set_menu_status_msg("R.EDWARDS 15");
+	set_menu_status_msg(VERSION);
 	set_menu_status_byte(0);
 
 	while (1) {

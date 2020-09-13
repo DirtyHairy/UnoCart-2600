@@ -17,7 +17,7 @@ void emulate_3EPlus_cartridge(uint8_t* buffer, uint32_t image_size)
 {
 	if (image_size > 0x010000) return;
 
-	int cartRAMPages = 32;
+	const uint8_t cartRAMPages = 64;
 	int cartROMPages = image_size / 1024;
 	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
 	uint16_t act_bank = 0;
