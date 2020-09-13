@@ -28,7 +28,7 @@
 
 uint8_t ram[96 * 1024];
 
-extern void emulate_cartridge(uint8_t* image, uint32_t image_size, uint8_t* ram);
+extern void emulate_cartridge(uint8_t* image, uint8_t* ram);
 
 GPIO_InitTypeDef  GPIO_InitStructure;
 
@@ -73,5 +73,5 @@ int main(void)
 	/* In: PD{0..15} */
 	config_gpio_addr();
 
-	emulate_cartridge((uint8_t*)FLASH_BASE + 16*1024, 32*1024, ram);
+	emulate_cartridge((uint8_t*)FLASH_BASE + 16*1024, ram);
 }

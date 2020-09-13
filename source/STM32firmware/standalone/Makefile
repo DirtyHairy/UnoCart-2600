@@ -15,13 +15,12 @@ OBJCOPY = arm-none-eabi-objcopy
 
 STFLASH = st-flash
 
-SOURCES = \
+SOURCES_MAIN = \
 	src/startup_stm32f40xx.s \
 	src/system_stm32f4xx.c \
 	Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_rcc.c \
 	Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_gpio.c \
-	src/main.c \
-	src/driver_3ep.c
+	src/main.c
 
 INCLUDES = \
 	-Isrc \
@@ -31,12 +30,9 @@ INCLUDES = \
 
 GARBAGE = $(DEPDIR) $(BUILDDIR)
 
-OBJECTS = $(addprefix $(BUILDDIR)/, $(addsuffix .o, $(basename $(SOURCES))))
+OBJECTS_MAIN = $(addprefix $(BUILDDIR)/, $(addsuffix .o, $(basename $(SOURCES_MAIN))))
 
-ELF = $(BUILDDIR)/firmware.elf
-HEX = $(BUILDDIR)/firmware.hex
-BIN = $(BUILDDIR)/firmware.bin
-MAP = $(BUILDDIR)/firmware.map
+DRIVERS = $(BUILDDIR)/driver_4k.bin $(BUILDDIR)/driver_3ep_32k.bin
 
 CFLAGS = \
 	-MT $@ -MMD -MP -MF $(DEPDIR)/$*.d \
@@ -58,22 +54,19 @@ LDFLAGS += \
 	-mthumb -mcpu=cortex-m4 \
 	-mhard-float \
 	--specs=nosys.specs \
-	-Wl,--gc-sections \
-	-Wl,-Map=$(MAP)
+	-Wl,--gc-sections
 
-bin: $(BIN)
-hex: $(HEX)
-elf: $(ELF)
+all: $(DRIVERS)
 
-$(BIN): $(ELF)
+$(BUILDDIR)/%.bin: $(BUILDDIR)/%.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 16k $@
 
-$(HEX): $(ELF)
+$(BUILDDIR)/%.hex: $(BUILDDIR)/%.elf
 	$(OBJCOPY) -O ihex $< $@
 
-$(ELF): $(OBJECTS) $(LDSCRIPT)
-	$(LD) $(LDFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
+$(BUILDDIR)/%.elf: $(OBJECTS_MAIN) $(BUILDDIR)/src/%.o $(LDSCRIPT)
+	$(LD) $(LDFLAGS) -o $@ $(OBJECTS_MAIN) $(BUILDDIR)/src/$(notdir $(@:.elf=.o)) -Wl,-Map=$(@:.elf=.map)
 
 $(BUILDDIR)/%.o: %.c
 	mkdir -p $(dir $@)
@@ -84,12 +77,9 @@ $(BUILDDIR)/%.o: %.s
 	mkdir -p $(dir $@)
 	$(CC) -c $(CFLAGS) $< -o $@
 
-flash: $(BIN)
-	$(STFLASH) write $(BIN) 0x8000000
-
 clean:
 	rm -rf $(GARBAGE)
 
-.PHONY: bin elf hex flash clean
+.PHONY: build
 
 include $(wildcard $(patsubst %,$(DEPDIR)/%.d,$(basename $(SOURCES))))

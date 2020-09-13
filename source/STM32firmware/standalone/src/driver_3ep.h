@@ -13,9 +13,9 @@
  *   - read $x800, write $xa00
  *   - read $xc00, write $xe00
  */
-void emulate_cartridge(uint8_t* buffer, uint32_t image_size, uint8_t* cart_ram)
+void emulate_cartridge_generic(uint8_t* buffer, uint32_t image_size, uint8_t* cart_ram)
 {
-	int cartRAMPages = 32;
+	int cartRAMPages = 64;
 	int cartROMPages = image_size / 1024;
 	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
 	uint16_t act_bank = 0;
