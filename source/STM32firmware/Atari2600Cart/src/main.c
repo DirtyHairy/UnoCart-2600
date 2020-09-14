@@ -45,7 +45,13 @@
 #include "cartridge_ace.h"
 #include "cartridge_pp.h"
 
+#define CCM_RAM ((uint8_t*)0x10000000)
+
+#ifdef BUS_DUMPER
+#define VERSION "BUSDUMPER 16"
+#else
 #define VERSION "R.EDWARDS 16"
+#endif
 
 /*************************************************************************
  * Cartridge Definitions
@@ -1416,25 +1422,64 @@ int readDirectoryForAtari(char *path)
 	return ret;
 }
 
+void bus_dumper() {
+	__disable_irq();
+
+	SET_DATA_MODE_IN
+
+	uint16_t addr = ADDR_IN;
+	uint32_t start_cycles = 0;
+
+	while (ADDR_IN == addr) start_cycles++;
+
+	for (uint32_t i = 3; i < 32 * 1024; i++)
+		((uint16_t*)(CCM_RAM))[i] = (ADDR_IN & 0xffff);
+
+	__enable_irq();
+
+	((uint32_t*)(CCM_RAM))[0] = start_cycles;
+	((uint16_t*)(CCM_RAM))[2] = addr;
+
+	FIL file;
+	UINT bytes_written;
+	FATFS FatFs;
+
+	TM_DELAY_Init();
+	f_mount(&FatFs, "", 1);
+
+	f_open(&file, "/bus_dump.bin", FA_CREATE_ALWAYS | FA_WRITE);
+	f_write(&file, CCM_RAM, 64 * 1024, &bytes_written);
+	f_close(&file);
+
+	f_mount(0, "", 1);
+
+	while (1) {};
+}
+
 int main(void)
 {
-	char curPath[256] = "";
-	int cart_type = CART_TYPE_NONE;
-
-	init();
-	/* In/Out: PE{8..15} */
-	config_gpio_data();
 	/* In: PD{0..15} */
 	config_gpio_addr();
 	/* In: Other Cart Input Signals - PC{0..1} */
 	config_gpio_sig();
+	/* In/Out: PE{8..15} */
+	config_gpio_data();
 
 	if (!(GPIOC->IDR & 0x0001))
+#ifdef BUS_DUMPER
+		bus_dumper();
+#else
 		tv_mode = TV_MODE_PAL60;
+#endif
 	else if (!(GPIOC->IDR & 0x0002))
 		tv_mode = TV_MODE_PAL;
 	else
 		tv_mode = TV_MODE_NTSC;
+
+	char curPath[256] = "";
+	int cart_type = CART_TYPE_NONE;
+
+	init();
 
 	set_tv_mode(tv_mode);
 
