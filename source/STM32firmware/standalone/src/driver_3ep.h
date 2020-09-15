@@ -18,6 +18,8 @@ void emulate_cartridge_generic(uint8_t* buffer, uint32_t image_size, uint8_t* ca
 	int cartRAMPages = 64;
 	int cartROMPages = image_size / 1024;
 	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
+	uint16_t last_addr = 0;
+	bool banking_locked = true;
 	uint16_t act_bank = 0;
 	uint8_t* cart_rom = buffer;
 
@@ -30,6 +32,9 @@ void emulate_cartridge_generic(uint8_t* buffer, uint32_t image_size, uint8_t* ca
 	{
 		while ((addr = ADDR_IN) != addr_prev)
 			addr_prev = addr;
+
+		if ((last_addr & 0x1fff) == 0x1ffc && (addr & 0x1fff) == 0x1ffd) banking_locked = false;
+		last_addr = addr;
 
 		// got a stable address
 		if (addr & 0x1000)
@@ -54,7 +59,7 @@ void emulate_cartridge_generic(uint8_t* buffer, uint32_t image_size, uint8_t* ca
 				while (ADDR_IN == addr) ;
 				SET_DATA_MODE_IN
 			}
-		} else {
+		} else if (!banking_locked) {
 			while (ADDR_IN == addr) { data_prev = data; data = DATA_IN; }
 
 			data_prev >>= 8;
