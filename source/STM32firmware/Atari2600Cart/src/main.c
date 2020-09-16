@@ -60,7 +60,7 @@
 #define MAX_CART_RAM_SIZE	32	// in kilobytes, historical to be removed
 #define BUFFER_SIZE			96  // kilobytes
 
-uint8_t buffer[BUFFER_SIZE * 1024];
+uint8_t* buffer;
 
 char cartridge_image_path[256];
 unsigned int cart_size_bytes;
@@ -1478,6 +1478,8 @@ int main(void)
 
 	char curPath[256] = "";
 	int cart_type = CART_TYPE_NONE;
+
+	buffer = (uint8_t*)malloc(BUFFER_SIZE * 1024);
 
 	init();
 
