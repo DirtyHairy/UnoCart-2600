@@ -48,9 +48,9 @@
 #define CCM_RAM ((uint8_t*)0x10000000)
 
 #ifdef BUS_DUMPER
-#define VERSION "BUSDUMPER 16"
+#define VERSION "BUSDUMPER 17"
 #else
-#define VERSION "R.EDWARDS 16"
+#define VERSION "R.EDWARDS 17"
 #endif
 
 /*************************************************************************
@@ -1479,6 +1479,7 @@ int main(void)
 	char curPath[256] = "";
 	int cart_type = CART_TYPE_NONE;
 
+	// malloc the RAM buffer here in order to avoid zero filling 96k of BSS
 	buffer = (uint8_t*)malloc(BUFFER_SIZE * 1024);
 
 	init();
