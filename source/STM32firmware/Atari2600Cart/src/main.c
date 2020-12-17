@@ -97,6 +97,7 @@ int tv_mode;
 #define CART_TYPE_DFSC  28  // DFSC
 #define CART_TYPE_3EP	29	// 3E+ 1-64K + 32K ram
 #define CART_TYPE_4KSC  30  // 4k+SC
+#define CART_TYPE_UA    31  // UA
 
 typedef struct {
 	const char *ext;
@@ -183,6 +184,30 @@ int searchForBytes(unsigned char *bytes, int size, unsigned char *signature, int
 			break;
 	}
 	return (count >= minhits);
+}
+
+int isProbablyUA(int size, unsigned char *bytes)
+{
+  // UA cart bankswitching switches to bank 1 by accessing address 0x240
+  // using 'STA $240' or 'LDA $240'
+  // Similar Brazilian (Digivison) cart bankswitching switches to bank 1 by accessing address 0x2C0
+  // using 'BIT $2C0', 'STA $2C0' or 'LDA $2C0'
+  // Other Brazilian (Atari Mania) ROM's bankswitching switches to bank 1 by accessing address 0xFC0
+  // using 'BIT $FA0', 'BIT $FC0' or 'STA $FA0'
+	unsigned char signature[7][3] = {
+    { 0x8D, 0x40, 0x02 },  // STA $240 (Funky Fish, Pleiades)
+    { 0xAD, 0x40, 0x02 },  // LDA $240 (???)
+    { 0xBD, 0x1F, 0x02 },  // LDA $21F,X (Gingerbread Man)
+    { 0x2C, 0xC0, 0x02 },  // BIT $2C0 (Time Pilot)
+    { 0x8D, 0xC0, 0x02 },  // STA $2C0 (Fathom, Vanguard)
+    { 0xAD, 0xC0, 0x02 },  // LDA $2C0 (Mickey)
+    { 0x2C, 0xC0, 0x0F }   // BIT $FC0 (H.E.R.O., Kung-Fu Master)
+  };
+  for(int i = 0; i < 7; ++i)
+    if(searchForBytes(bytes, size, signature[i], 3, 1))
+      return 1;
+
+  return 0;
 }
 
 int isProbablyFE(int size, unsigned char *bytes)
@@ -529,6 +554,8 @@ int identify_cartridge(char *filename, char* long_filename)
 			cart_type = CART_TYPE_3E;
 		else if (isProbably3F(bytes_read, buffer))
 			cart_type = CART_TYPE_3F;
+		else if (isProbablyUA(bytes_read, buffer))
+			cart_type = CART_TYPE_UA;
 		else if (isProbablyFE(bytes_read, buffer) && !f8)
 			cart_type = CART_TYPE_FE;
 		else if (isProbably0840(bytes_read, buffer))
@@ -866,6 +893,51 @@ void emulate_FA_cartridge()
 	}
 	__enable_irq();
 }
+
+/* UA Bankswitching
+ * ----------------
+ * UA cart bankswitching switches to bank 1 by accessing address 0x240
+ * using 'STA $240' or 'LDA $240'
+ * Similar Brazilian (Digivison) cart bankswitching switches to bank 1 by accessing address 0x2C0
+ * using 'BIT $2C0', 'STA $2C0' or 'LDA $2C0'
+ * Other Brazilian (Atari Mania) ROM's bankswitching switches to bank 1 by accessing address 0xFC0
+ * using 'BIT $FA0', 'BIT $FC0' or 'STA $FA0'
+ */
+void emulate_UA_cartridge()
+{
+	setup_cartridge_image();
+
+	uint16_t addr, addr_prev = 0, data = 0, data_prev = 0;
+	unsigned char *bankPtr = &cart_rom[0];
+
+	__disable_irq();	// Disable interrupts
+
+	while (1)
+	{
+		while ((addr = ADDR_IN) != addr_prev)
+			addr_prev = addr;
+		// got a stable address
+		if (addr & 0x1000)
+		{ // A12 high
+			// normal rom access
+			DATA_OUT = ((uint16_t)bankPtr[addr&0xFFF])<<8;
+			SET_DATA_MODE_OUT
+			// wait for address bus to change
+			while (ADDR_IN == addr) ;
+			SET_DATA_MODE_IN
+		}else{
+			// check for bank-switch
+			if (addr == 0x220 ){
+				bankPtr = &cart_rom[0];
+			}else if(addr == 0x240){
+				bankPtr = &cart_rom[4*1024];
+			}
+		}
+	}
+
+	__enable_irq();
+}
+
 
 /* FE Bankswitching
  * ----------------
@@ -1344,6 +1416,8 @@ void emulate_cartridge(int cart_type)
 		emulate_FxSC_cartridge(0x1FF4, 0x1FFB, 1);
 	else if (cart_type == CART_TYPE_FE)
 		emulate_FE_cartridge();
+	else if (cart_type == CART_TYPE_UA)
+		emulate_UA_cartridge();
 	else if (cart_type == CART_TYPE_3F)
 		emulate_3f_cartridge(cartridge_image_path, cart_size_bytes, buffer);
 	else if (cart_type == CART_TYPE_3E)
